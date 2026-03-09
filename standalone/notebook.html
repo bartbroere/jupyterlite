@@ -852,16 +852,14 @@ async function initPyodideCDN() {
   });
 }
 
-async function initPyodideInlined() {
-  // When inlined, the build script has already loaded pyodide.asm.js and
-  // pyodide.js via <script> tags, so _createPyodideModule and loadPyodide
-  // are already defined. The inlined data is available as globals:
-  //   __PYODIDE_WASM_BASE64__    - base64-encoded pyodide.asm.wasm
-  //   __PYODIDE_STDLIB_BASE64__  - base64-encoded python_stdlib.zip
-  //   __PYODIDE_LOCK_JSON__      - pyodide-lock.json as a string
+// Blob URLs for inlined packages - kept alive for the session so
+// micropip/loadPackage can fetch them at any time.
+let _inlinedPkgBlobUrls = {};
 
-  // Decode inlined binaries into Blob URLs so Pyodide's internal fetch()
-  // calls resolve without any network access.
+function _installFetchInterceptor() {
+  // Monkey-patch fetch to serve all inlined assets from Blob URLs,
+  // avoiding any network requests.
+
   function b64ToBlob(b64, mime) {
     const bin = atob(b64);
     const bytes = new Uint8Array(bin.length);
@@ -875,27 +873,48 @@ async function initPyodideInlined() {
     new Blob([__PYODIDE_LOCK_JSON__], { type: 'application/json' })
   );
 
-  // Use a fake indexURL that we intercept. Monkey-patch fetch to serve
-  // inlined assets for any Pyodide-related URLs.
+  // Create Blob URLs for all inlined packages
+  const inlinedPackages = (typeof __PYODIDE_PACKAGES__ !== 'undefined') ? __PYODIDE_PACKAGES__ : {};
+  for (const [filename, b64data] of Object.entries(inlinedPackages)) {
+    _inlinedPkgBlobUrls[filename] = b64ToBlob(b64data, 'application/zip');
+  }
+
   const FAKE_INDEX = 'https://pyodide-inlined.invalid/v0/full/';
   const _origFetch = window.fetch;
   window.fetch = function(input, init) {
     const url = (typeof input === 'string') ? input : (input?.url || String(input));
-    if (url.includes('pyodide.asm.wasm') || url.includes(wasmBlobUrl)) {
-      return _origFetch(wasmBlobUrl, init);
+
+    // Core assets
+    if (url.includes('pyodide.asm.wasm')) return _origFetch(wasmBlobUrl, init);
+    if (url.includes('python_stdlib.zip')) return _origFetch(stdlibBlobUrl, init);
+    if (url.includes('pyodide-lock.json')) return _origFetch(lockBlobUrl, init);
+
+    // Inlined packages - match by wheel/tar filename
+    for (const [filename, blobUrl] of Object.entries(_inlinedPkgBlobUrls)) {
+      if (url.includes(filename)) return _origFetch(blobUrl, init);
     }
-    if (url.includes('python_stdlib.zip') || url.includes(stdlibBlobUrl)) {
-      return _origFetch(stdlibBlobUrl, init);
-    }
-    if (url.includes('pyodide-lock.json') || url.includes(lockBlobUrl)) {
-      return _origFetch(lockBlobUrl, init);
-    }
-    // Block any other requests to the fake URL or unexpected Pyodide fetches
+
+    // Block any other requests to the fake indexURL
     if (url.includes('pyodide-inlined.invalid')) {
       return Promise.resolve(new Response('', { status: 404 }));
     }
     return _origFetch.apply(this, arguments);
   };
+
+  return { FAKE_INDEX, lockBlobUrl, stdlibBlobUrl };
+}
+
+async function initPyodideInlined() {
+  // When inlined, the build script has already loaded pyodide.asm.js and
+  // pyodide.js via <script> tags, so _createPyodideModule and loadPyodide
+  // are already defined. The inlined data is available as globals:
+  //   __PYODIDE_WASM_BASE64__    - base64-encoded pyodide.asm.wasm
+  //   __PYODIDE_STDLIB_BASE64__  - base64-encoded python_stdlib.zip
+  //   __PYODIDE_LOCK_JSON__      - pyodide-lock.json as a string
+  //   __PYODIDE_PACKAGES__       - {filename: base64data} for bundled packages
+  //   __PYODIDE_PACKAGE_LIST__   - [name, ...] of packages to auto-install
+
+  const { FAKE_INDEX, lockBlobUrl, stdlibBlobUrl } = _installFetchInterceptor();
 
   pyodide = await loadPyodide({
     indexURL: FAKE_INDEX,
@@ -905,13 +924,13 @@ async function initPyodideInlined() {
     stderr: (text) => appendOutput(currentRunningCell, 'stderr', text),
   });
 
-  // Restore original fetch
-  window.fetch = _origFetch;
-
-  // Clean up blob URLs
-  URL.revokeObjectURL(wasmBlobUrl);
-  URL.revokeObjectURL(stdlibBlobUrl);
-  URL.revokeObjectURL(lockBlobUrl);
+  // Auto-install bundled packages
+  const packageList = (typeof __PYODIDE_PACKAGE_LIST__ !== 'undefined') ? __PYODIDE_PACKAGE_LIST__ : [];
+  if (packageList.length > 0) {
+    const detailEl = document.getElementById('loading-detail');
+    if (detailEl) detailEl.textContent = `Installing ${packageList.length} bundled packages...`;
+    await pyodide.loadPackage(packageList);
+  }
 }
 
 async function setupPythonEnv() {
