@@ -1,0 +1,1287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JupyterLite Standalone</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #ffffff;
+  --bg-secondary: #f8f9fa;
+  --bg-toolbar: #f0f0f0;
+  --border: #e0e0e0;
+  --border-active: #1976d2;
+  --text: #212121;
+  --text-secondary: #616161;
+  --text-muted: #9e9e9e;
+  --accent: #1976d2;
+  --accent-hover: #1565c0;
+  --accent-light: #e3f2fd;
+  --error-bg: #fff0f0;
+  --error-text: #c62828;
+  --error-border: #ef9a9a;
+  --success: #2e7d32;
+  --cell-bg: #ffffff;
+  --output-bg: #fafafa;
+  --scrollbar: #c0c0c0;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Source Code Pro', 'Consolas', monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1e1e1e;
+    --bg-secondary: #252526;
+    --bg-toolbar: #2d2d2d;
+    --border: #404040;
+    --border-active: #4fc3f7;
+    --text: #d4d4d4;
+    --text-secondary: #a0a0a0;
+    --text-muted: #707070;
+    --accent: #4fc3f7;
+    --accent-hover: #29b6f6;
+    --accent-light: #1a3a4a;
+    --error-bg: #3e1e1e;
+    --error-text: #ef9a9a;
+    --error-border: #5e2a2a;
+    --success: #66bb6a;
+    --cell-bg: #1e1e1e;
+    --output-bg: #252526;
+    --scrollbar: #555;
+  }
+}
+
+html, body {
+  height: 100%;
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+}
+
+body { display: flex; flex-direction: column; }
+
+/* Header */
+#header {
+  display: flex;
+  align-items: center;
+  padding: 6px 16px;
+  background: var(--bg-toolbar);
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+#header .logo {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+#header .logo span { color: var(--text-secondary); font-weight: 400; }
+
+#filename {
+  font-size: 14px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 2px 8px;
+  font-family: var(--font-sans);
+  outline: none;
+  min-width: 120px;
+}
+#filename:hover { border-color: var(--border); }
+#filename:focus { border-color: var(--accent); }
+
+#kernel-status {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+#kernel-status .dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: background 0.3s;
+}
+#kernel-status.ready .dot { background: var(--success); }
+#kernel-status.busy .dot { background: #ff9800; }
+#kernel-status.error .dot { background: var(--error-text); }
+#kernel-status.loading .dot {
+  background: #ff9800;
+  animation: pulse 1s infinite;
+}
+@keyframes pulse { 50% { opacity: 0.4; } }
+
+/* Toolbar */
+#toolbar {
+  display: flex;
+  align-items: center;
+  padding: 4px 16px;
+  background: var(--bg-toolbar);
+  border-bottom: 1px solid var(--border);
+  gap: 2px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.tb-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.tb-btn:hover { background: var(--bg); border-color: var(--border); }
+.tb-btn:active { background: var(--accent-light); }
+.tb-btn[disabled] { opacity: 0.4; cursor: default; }
+.tb-btn[disabled]:hover { background: transparent; border-color: transparent; }
+
+.tb-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 4px;
+}
+
+#cell-type-select {
+  font-size: 13px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  outline: none;
+}
+
+/* Notebook area */
+#notebook {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 0;
+}
+
+#cells {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+/* Cell */
+.cell {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-bottom: 12px;
+  background: var(--cell-bg);
+  position: relative;
+  transition: border-color 0.15s;
+}
+.cell.selected { border-color: var(--border-active); }
+.cell.selected .cell-gutter { background: var(--border-active); }
+
+.cell-gutter {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  border-radius: 4px 0 0 4px;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.cell-header {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px 4px 12px;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  border-radius: 4px 4px 0 0;
+}
+
+.cell-header .cell-type-label {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+}
+
+.cell-header .exec-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.cell-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.cell:hover .cell-actions, .cell.selected .cell-actions { opacity: 1; }
+
+.cell-action-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+}
+.cell-action-btn:hover { background: var(--bg); color: var(--text); }
+
+/* Code editor */
+.cell-input {
+  position: relative;
+}
+
+.cell-input textarea {
+  width: 100%;
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.5;
+  border: none;
+  outline: none;
+  background: var(--cell-bg);
+  color: var(--text);
+  resize: none;
+  overflow: hidden;
+  tab-size: 4;
+}
+
+/* Markdown cell rendered */
+.cell-input .markdown-rendered {
+  padding: 12px 16px;
+  min-height: 36px;
+  cursor: pointer;
+  line-height: 1.6;
+}
+.markdown-rendered h1 { font-size: 2em; margin: 0.5em 0 0.3em; border-bottom: 1px solid var(--border); padding-bottom: 0.2em; }
+.markdown-rendered h2 { font-size: 1.5em; margin: 0.5em 0 0.3em; border-bottom: 1px solid var(--border); padding-bottom: 0.2em; }
+.markdown-rendered h3 { font-size: 1.25em; margin: 0.5em 0 0.3em; }
+.markdown-rendered h4 { font-size: 1.1em; margin: 0.5em 0 0.3em; }
+.markdown-rendered p { margin: 0.5em 0; }
+.markdown-rendered ul, .markdown-rendered ol { margin: 0.5em 0; padding-left: 2em; }
+.markdown-rendered li { margin: 0.2em 0; }
+.markdown-rendered code {
+  background: var(--bg-secondary);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+.markdown-rendered pre {
+  background: var(--bg-secondary);
+  padding: 12px;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+.markdown-rendered pre code { background: none; padding: 0; }
+.markdown-rendered blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 12px;
+  color: var(--text-secondary);
+  margin: 0.5em 0;
+}
+.markdown-rendered table { border-collapse: collapse; margin: 0.5em 0; }
+.markdown-rendered th, .markdown-rendered td { border: 1px solid var(--border); padding: 6px 12px; }
+.markdown-rendered th { background: var(--bg-secondary); font-weight: 600; }
+.markdown-rendered a { color: var(--accent); }
+.markdown-rendered img { max-width: 100%; }
+
+/* Output area */
+.cell-output {
+  border-top: 1px solid var(--border);
+  background: var(--output-bg);
+  border-radius: 0 0 4px 4px;
+}
+.cell-output:empty { display: none; }
+
+.output-item {
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
+.output-item.stderr {
+  color: var(--error-text);
+  background: var(--error-bg);
+}
+
+.output-item.error {
+  color: var(--error-text);
+  background: var(--error-bg);
+  border-left: 3px solid var(--error-border);
+}
+
+.output-item.html-output { font-family: var(--font-sans); }
+.output-item.html-output img { max-width: 100%; }
+
+.output-item + .output-item { border-top: 1px solid var(--border); }
+
+/* Loading overlay */
+#loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  transition: opacity 0.3s;
+}
+#loading-overlay.hidden { opacity: 0; pointer-events: none; }
+
+#loading-overlay .spinner {
+  width: 40px; height: 40px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 16px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+#loading-overlay .loading-text {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+#loading-overlay .loading-detail {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 8px;
+  max-width: 400px;
+  text-align: center;
+}
+
+/* Add cell button */
+.add-cell-area {
+  display: flex;
+  justify-content: center;
+  padding: 8px;
+  gap: 8px;
+}
+
+.add-cell-btn {
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  padding: 6px 16px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: all 0.15s;
+}
+.add-cell-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-light);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 4px; }
+
+/* Download dialog */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+.dialog {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+.dialog h3 { margin-bottom: 12px; }
+.dialog p { margin-bottom: 16px; color: var(--text-secondary); font-size: 14px; }
+.dialog-btns { display: flex; gap: 8px; justify-content: flex-end; }
+.dialog-btns button {
+  padding: 6px 16px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+}
+.dialog-btns button.primary {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+</style>
+</head>
+<body>
+
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div class="loading-text">Starting JupyterLite...</div>
+  <div class="loading-detail" id="loading-detail">Initializing Pyodide runtime</div>
+</div>
+
+<div id="header">
+  <div class="logo">JupyterLite <span>Standalone</span></div>
+  <input id="filename" value="Untitled.ipynb" spellcheck="false">
+  <div id="kernel-status" class="loading">
+    <span class="dot"></span>
+    <span class="label">Loading kernel...</span>
+  </div>
+</div>
+
+<div id="toolbar">
+  <button class="tb-btn" onclick="saveNotebook()" title="Save (Ctrl+S)">&#128190; Save</button>
+  <button class="tb-btn" onclick="loadNotebook()" title="Open .ipynb file">&#128194; Open</button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" onclick="insertCell('code', getSelectedIndex()+1)" title="Add cell below">&#43; Cell</button>
+  <button class="tb-btn" onclick="cutCell()" title="Cut cell">&#9986; Cut</button>
+  <button class="tb-btn" onclick="copyCell()" title="Copy cell">&#128203; Copy</button>
+  <button class="tb-btn" onclick="pasteCell()" title="Paste cell below">&#128196; Paste</button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" onclick="moveCell(-1)" title="Move cell up">&#9650;</button>
+  <button class="tb-btn" onclick="moveCell(1)" title="Move cell down">&#9660;</button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" id="run-btn" onclick="runSelected()" title="Run cell (Shift+Enter)">&#9654; Run</button>
+  <button class="tb-btn" onclick="runAll()" title="Run all cells">&#9654;&#9654; Run All</button>
+  <button class="tb-btn" onclick="interruptKernel()" title="Interrupt kernel">&#9632; Stop</button>
+  <button class="tb-btn" onclick="restartKernel()" title="Restart kernel">&#8635; Restart</button>
+  <div class="tb-sep"></div>
+  <select id="cell-type-select" onchange="changeCellType(this.value)">
+    <option value="code">Code</option>
+    <option value="markdown">Markdown</option>
+    <option value="raw">Raw</option>
+  </select>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" onclick="clearAllOutputs()">Clear Outputs</button>
+</div>
+
+<div id="notebook">
+  <div id="cells"></div>
+  <div class="add-cell-area">
+    <button class="add-cell-btn" onclick="insertCell('code')">+ Code</button>
+    <button class="add-cell-btn" onclick="insertCell('markdown')">+ Markdown</button>
+  </div>
+</div>
+
+<input type="file" id="file-input" accept=".ipynb" style="display:none" onchange="handleFileOpen(event)">
+
+<script>
+// ===========================================================================
+// JupyterLite Standalone - Single-file Jupyter Notebook with Pyodide kernel
+// ===========================================================================
+
+// --- Configuration ---
+// When inlined, these will be replaced by the build script
+const PYODIDE_INLINED = typeof __PYODIDE_WASM_BASE64__ !== 'undefined';
+
+// --- State ---
+let cells = [];
+let selectedCellId = null;
+let executionCount = 0;
+let pyodide = null;
+let pyodideReady = false;
+let cellClipboard = null;
+let interruptBuffer = null;
+let cellIdCounter = 0;
+
+// --- Utility ---
+function genId() { return 'cell-' + (++cellIdCounter); }
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// Simple markdown renderer (no external dependency)
+function renderMarkdown(src) {
+  let html = src;
+  // Code blocks
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) =>
+    `<pre><code class="language-${lang}">${escapeHtml(code.trim())}</code></pre>`);
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Headers
+  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  // Bold & italic
+  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  // Links & images
+  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img alt="$1" src="$2">');
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+  // Blockquotes
+  html = html.replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>');
+  // Unordered lists
+  html = html.replace(/^[\-\*] (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+  // Ordered lists
+  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+  // Horizontal rule
+  html = html.replace(/^---$/gm, '<hr>');
+  // Paragraphs (lines not already wrapped)
+  html = html.replace(/^(?!<[a-z])((?!<\/)[^\n]+)$/gm, '<p>$1</p>');
+  // Line breaks
+  html = html.replace(/\n\n/g, '\n');
+  return html;
+}
+
+// --- Cell DOM ---
+function createCellElement(cell) {
+  const el = document.createElement('div');
+  el.className = 'cell' + (cell.id === selectedCellId ? ' selected' : '');
+  el.dataset.cellId = cell.id;
+  el.onclick = (e) => {
+    if (!e.target.closest('.cell-action-btn')) selectCell(cell.id);
+  };
+
+  const isMarkdown = cell.type === 'markdown';
+  const isRendered = isMarkdown && cell.rendered;
+
+  el.innerHTML = `
+    <div class="cell-gutter"></div>
+    <div class="cell-header">
+      <span class="cell-type-label">${cell.type === 'code' ? 'Python' : cell.type === 'markdown' ? 'Markdown' : 'Raw'}</span>
+      <div class="cell-actions">
+        <button class="cell-action-btn" onclick="runCellById('${cell.id}')" title="Run cell">&#9654;</button>
+        <button class="cell-action-btn" onclick="deleteCell('${cell.id}')" title="Delete cell">&#10005;</button>
+      </div>
+      ${cell.type === 'code' ? `<span class="exec-count">${cell.executionCount ? '[' + cell.executionCount + ']' : '[ ]'}</span>` : ''}
+    </div>
+    <div class="cell-input">
+      ${isRendered
+        ? `<div class="markdown-rendered" ondblclick="unrenderMarkdown('${cell.id}')">${renderMarkdown(cell.source)}</div>`
+        : `<textarea spellcheck="false" placeholder="${isMarkdown ? 'Markdown content...' : cell.type === 'code' ? 'Python code...' : 'Raw text...'}">${escapeHtml(cell.source)}</textarea>`
+      }
+    </div>
+    <div class="cell-output">${cell.outputs.map(renderOutput).join('')}</div>
+  `;
+
+  const textarea = el.querySelector('textarea');
+  if (textarea) {
+    textarea.addEventListener('input', (e) => {
+      cell.source = e.target.value;
+      autoResize(e.target);
+    });
+    textarea.addEventListener('keydown', handleTextareaKeydown);
+    textarea.addEventListener('focus', () => selectCell(cell.id));
+    requestAnimationFrame(() => autoResize(textarea));
+  }
+
+  return el;
+}
+
+function renderOutput(output) {
+  if (output.type === 'text') {
+    return `<div class="output-item">${escapeHtml(output.text)}</div>`;
+  } else if (output.type === 'stderr') {
+    return `<div class="output-item stderr">${escapeHtml(output.text)}</div>`;
+  } else if (output.type === 'error') {
+    return `<div class="output-item error">${escapeHtml(output.traceback || output.text)}</div>`;
+  } else if (output.type === 'html') {
+    return `<div class="output-item html-output">${output.html}</div>`;
+  } else if (output.type === 'image') {
+    return `<div class="output-item html-output"><img src="data:image/${output.format || 'png'};base64,${output.data}"></div>`;
+  }
+  return '';
+}
+
+function autoResize(textarea) {
+  textarea.style.height = 'auto';
+  textarea.style.height = textarea.scrollHeight + 'px';
+}
+
+function refreshCells() {
+  const container = document.getElementById('cells');
+  container.innerHTML = '';
+  cells.forEach(cell => container.appendChild(createCellElement(cell)));
+  updateToolbar();
+}
+
+function refreshCell(cellId) {
+  const cell = cells.find(c => c.id === cellId);
+  if (!cell) return;
+  const old = document.querySelector(`[data-cell-id="${cellId}"]`);
+  if (old) {
+    const newEl = createCellElement(cell);
+    old.replaceWith(newEl);
+  }
+}
+
+function updateToolbar() {
+  const cell = cells.find(c => c.id === selectedCellId);
+  if (cell) {
+    document.getElementById('cell-type-select').value = cell.type;
+  }
+}
+
+// --- Cell operations ---
+function createCell(type = 'code', source = '') {
+  return {
+    id: genId(),
+    type,
+    source,
+    outputs: [],
+    executionCount: null,
+    rendered: false,
+  };
+}
+
+function insertCell(type = 'code', index = -1, source = '') {
+  const cell = createCell(type, source);
+  if (index < 0 || index >= cells.length) {
+    cells.push(cell);
+  } else {
+    cells.splice(index, 0, cell);
+  }
+  selectCell(cell.id);
+  refreshCells();
+  focusCell(cell.id);
+  return cell;
+}
+
+function deleteCell(cellId) {
+  const idx = cells.findIndex(c => c.id === cellId);
+  if (idx < 0 || cells.length <= 1) return;
+  cells.splice(idx, 1);
+  if (selectedCellId === cellId) {
+    selectCell(cells[Math.min(idx, cells.length - 1)].id);
+  }
+  refreshCells();
+}
+
+function selectCell(cellId) {
+  selectedCellId = cellId;
+  document.querySelectorAll('.cell').forEach(el => {
+    el.classList.toggle('selected', el.dataset.cellId === cellId);
+  });
+  updateToolbar();
+}
+
+function focusCell(cellId) {
+  const el = document.querySelector(`[data-cell-id="${cellId}"] textarea`);
+  if (el) el.focus();
+}
+
+function getSelectedIndex() {
+  return cells.findIndex(c => c.id === selectedCellId);
+}
+
+function moveCell(direction) {
+  const idx = getSelectedIndex();
+  const newIdx = idx + direction;
+  if (idx < 0 || newIdx < 0 || newIdx >= cells.length) return;
+  [cells[idx], cells[newIdx]] = [cells[newIdx], cells[idx]];
+  refreshCells();
+}
+
+function cutCell() {
+  const cell = cells.find(c => c.id === selectedCellId);
+  if (!cell) return;
+  cellClipboard = JSON.parse(JSON.stringify(cell));
+  deleteCell(cell.id);
+}
+
+function copyCell() {
+  const cell = cells.find(c => c.id === selectedCellId);
+  if (cell) cellClipboard = JSON.parse(JSON.stringify(cell));
+}
+
+function pasteCell() {
+  if (!cellClipboard) return;
+  const newCell = { ...JSON.parse(JSON.stringify(cellClipboard)), id: genId() };
+  const idx = getSelectedIndex();
+  cells.splice(idx + 1, 0, newCell);
+  selectCell(newCell.id);
+  refreshCells();
+}
+
+function changeCellType(type) {
+  const cell = cells.find(c => c.id === selectedCellId);
+  if (!cell || cell.type === type) return;
+  cell.type = type;
+  cell.outputs = [];
+  cell.executionCount = null;
+  cell.rendered = false;
+  refreshCell(cell.id);
+}
+
+function clearAllOutputs() {
+  cells.forEach(c => { c.outputs = []; c.executionCount = null; });
+  refreshCells();
+}
+
+function unrenderMarkdown(cellId) {
+  const cell = cells.find(c => c.id === cellId);
+  if (cell) { cell.rendered = false; refreshCell(cellId); focusCell(cellId); }
+}
+
+// --- Keyboard shortcuts ---
+function handleTextareaKeydown(e) {
+  const textarea = e.target;
+  const cell = cells.find(c => c.id === textarea.closest('.cell').dataset.cellId);
+
+  if (e.key === 'Tab' && !e.shiftKey) {
+    e.preventDefault();
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    textarea.value = textarea.value.substring(0, start) + '    ' + textarea.value.substring(end);
+    textarea.selectionStart = textarea.selectionEnd = start + 4;
+    cell.source = textarea.value;
+    autoResize(textarea);
+  }
+
+  if (e.key === 'Enter' && e.shiftKey) {
+    e.preventDefault();
+    runCellById(cell.id);
+    const idx = cells.indexOf(cell);
+    if (idx === cells.length - 1) {
+      insertCell('code');
+    } else {
+      selectCell(cells[idx + 1].id);
+      focusCell(cells[idx + 1].id);
+    }
+  }
+
+  if (e.key === 'Enter' && e.ctrlKey) {
+    e.preventDefault();
+    runCellById(cell.id);
+  }
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.key === 's') {
+    e.preventDefault();
+    saveNotebook();
+  }
+});
+
+// --- Pyodide Kernel ---
+async function initPyodide() {
+  const statusEl = document.getElementById('kernel-status');
+  const detailEl = document.getElementById('loading-detail');
+
+  try {
+    detailEl.textContent = 'Loading Pyodide runtime...';
+
+    // Check if we have inlined WASM
+    if (typeof __PYODIDE_WASM_BASE64__ !== 'undefined') {
+      // Inlined mode: use the embedded WASM and stdlib
+      detailEl.textContent = 'Decoding inlined WebAssembly...';
+      await initPyodideInlined();
+    } else {
+      // CDN mode: load from jsDelivr
+      detailEl.textContent = 'Downloading Pyodide from CDN...';
+      await initPyodideCDN();
+    }
+
+    detailEl.textContent = 'Setting up Python environment...';
+    await setupPythonEnv();
+
+    pyodideReady = true;
+    statusEl.className = 'ready';
+    statusEl.querySelector('.label').textContent = 'Python (Pyodide)';
+
+    const overlay = document.getElementById('loading-overlay');
+    overlay.classList.add('hidden');
+    setTimeout(() => overlay.remove(), 300);
+
+  } catch (err) {
+    console.error('Failed to initialize Pyodide:', err);
+    statusEl.className = 'error';
+    statusEl.querySelector('.label').textContent = 'Kernel error';
+    detailEl.textContent = 'Error: ' + err.message;
+  }
+}
+
+async function initPyodideCDN() {
+  const PYODIDE_VERSION = '0.27.5';
+  const CDN = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full`;
+
+  // Load Pyodide script
+  await new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = `${CDN}/pyodide.js`;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error('Failed to load Pyodide script'));
+    document.head.appendChild(script);
+  });
+
+  pyodide = await loadPyodide({
+    indexURL: CDN,
+    stdout: (text) => appendOutput(currentRunningCell, 'text', text),
+    stderr: (text) => appendOutput(currentRunningCell, 'stderr', text),
+  });
+}
+
+async function initPyodideInlined() {
+  // When inlined, the build script has already loaded pyodide.asm.js and
+  // pyodide.js via <script> tags, so _createPyodideModule and loadPyodide
+  // are already defined. The inlined data is available as globals:
+  //   __PYODIDE_WASM_BASE64__    - base64-encoded pyodide.asm.wasm
+  //   __PYODIDE_STDLIB_BASE64__  - base64-encoded python_stdlib.zip
+  //   __PYODIDE_LOCK_JSON__      - pyodide-lock.json as a string
+
+  // Decode inlined binaries into Blob URLs so Pyodide's internal fetch()
+  // calls resolve without any network access.
+  function b64ToBlob(b64, mime) {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return URL.createObjectURL(new Blob([bytes], { type: mime }));
+  }
+
+  const wasmBlobUrl = b64ToBlob(__PYODIDE_WASM_BASE64__, 'application/wasm');
+  const stdlibBlobUrl = b64ToBlob(__PYODIDE_STDLIB_BASE64__, 'application/zip');
+  const lockBlobUrl = URL.createObjectURL(
+    new Blob([__PYODIDE_LOCK_JSON__], { type: 'application/json' })
+  );
+
+  // Use a fake indexURL that we intercept. Monkey-patch fetch to serve
+  // inlined assets for any Pyodide-related URLs.
+  const FAKE_INDEX = 'https://pyodide-inlined.invalid/v0/full/';
+  const _origFetch = window.fetch;
+  window.fetch = function(input, init) {
+    const url = (typeof input === 'string') ? input : (input?.url || String(input));
+    if (url.includes('pyodide.asm.wasm') || url.includes(wasmBlobUrl)) {
+      return _origFetch(wasmBlobUrl, init);
+    }
+    if (url.includes('python_stdlib.zip') || url.includes(stdlibBlobUrl)) {
+      return _origFetch(stdlibBlobUrl, init);
+    }
+    if (url.includes('pyodide-lock.json') || url.includes(lockBlobUrl)) {
+      return _origFetch(lockBlobUrl, init);
+    }
+    // Block any other requests to the fake URL or unexpected Pyodide fetches
+    if (url.includes('pyodide-inlined.invalid')) {
+      return Promise.resolve(new Response('', { status: 404 }));
+    }
+    return _origFetch.apply(this, arguments);
+  };
+
+  pyodide = await loadPyodide({
+    indexURL: FAKE_INDEX,
+    lockFileURL: lockBlobUrl,
+    stdLibURL: stdlibBlobUrl,
+    stdout: (text) => appendOutput(currentRunningCell, 'text', text),
+    stderr: (text) => appendOutput(currentRunningCell, 'stderr', text),
+  });
+
+  // Restore original fetch
+  window.fetch = _origFetch;
+
+  // Clean up blob URLs
+  URL.revokeObjectURL(wasmBlobUrl);
+  URL.revokeObjectURL(stdlibBlobUrl);
+  URL.revokeObjectURL(lockBlobUrl);
+}
+
+async function setupPythonEnv() {
+  // Set up matplotlib to output inline images
+  await pyodide.runPythonAsync(`
+import sys
+import io
+
+# Patch display for inline output
+class _JupyterDisplay:
+    def __init__(self):
+        self._outputs = []
+
+    def clear(self):
+        self._outputs = []
+
+    def display(self, obj, **kwargs):
+        if hasattr(obj, '_repr_html_'):
+            self._outputs.append(('html', obj._repr_html_()))
+        elif hasattr(obj, '_repr_png_'):
+            import base64
+            self._outputs.append(('image', base64.b64encode(obj._repr_png_()).decode()))
+        elif hasattr(obj, '__repr__'):
+            self._outputs.append(('text', repr(obj)))
+
+_jupyter_display = _JupyterDisplay()
+
+# Try to set up matplotlib for inline rendering
+try:
+    import matplotlib
+    matplotlib.use('AGG')
+except ImportError:
+    pass
+`);
+}
+
+let currentRunningCell = null;
+let isRunning = false;
+
+function appendOutput(cellId, type, text) {
+  if (!cellId) return;
+  const cell = cells.find(c => c.id === cellId);
+  if (!cell) return;
+
+  // Try to append to last output of same type
+  const lastOutput = cell.outputs[cell.outputs.length - 1];
+  if (lastOutput && lastOutput.type === type) {
+    lastOutput.text += '\n' + text;
+  } else {
+    cell.outputs.push({ type, text });
+  }
+  refreshCell(cellId);
+}
+
+async function runCell(cell) {
+  if (!pyodideReady || isRunning) return;
+  if (cell.type === 'markdown') {
+    cell.rendered = true;
+    refreshCell(cell.id);
+    return;
+  }
+  if (cell.type === 'raw') return;
+
+  isRunning = true;
+  currentRunningCell = cell.id;
+  cell.outputs = [];
+  executionCount++;
+  cell.executionCount = executionCount;
+
+  const statusEl = document.getElementById('kernel-status');
+  statusEl.className = 'busy';
+  statusEl.querySelector('.label').textContent = 'Running...';
+  refreshCell(cell.id);
+
+  try {
+    // Capture stdout/stderr
+    await pyodide.runPythonAsync(`
+_jupyter_display.clear()
+import sys, io
+_old_stdout = sys.stdout
+_old_stderr = sys.stderr
+sys.stdout = io.StringIO()
+sys.stderr = io.StringIO()
+`);
+
+    let result;
+    try {
+      result = await pyodide.runPythonAsync(cell.source);
+    } catch (err) {
+      // Get any stdout/stderr before the error
+      const stdout = await pyodide.runPythonAsync('sys.stdout.getvalue()');
+      const stderr = await pyodide.runPythonAsync('sys.stderr.getvalue()');
+      await pyodide.runPythonAsync('sys.stdout = _old_stdout; sys.stderr = _old_stderr');
+
+      if (stdout) cell.outputs.push({ type: 'text', text: stdout });
+      if (stderr) cell.outputs.push({ type: 'stderr', text: stderr });
+      cell.outputs.push({ type: 'error', text: err.message });
+      refreshCell(cell.id);
+      return;
+    }
+
+    // Get captured output
+    const stdout = await pyodide.runPythonAsync('sys.stdout.getvalue()');
+    const stderr = await pyodide.runPythonAsync('sys.stderr.getvalue()');
+    await pyodide.runPythonAsync('sys.stdout = _old_stdout; sys.stderr = _old_stderr');
+
+    if (stdout) cell.outputs.push({ type: 'text', text: stdout });
+    if (stderr) cell.outputs.push({ type: 'stderr', text: stderr });
+
+    // Check for display outputs (matplotlib figures, etc.)
+    const displayOutputs = await pyodide.runPythonAsync('_jupyter_display._outputs');
+    if (displayOutputs && displayOutputs.length) {
+      for (const [dtype, data] of displayOutputs) {
+        if (dtype === 'html') {
+          cell.outputs.push({ type: 'html', html: data });
+        } else if (dtype === 'image') {
+          cell.outputs.push({ type: 'image', data, format: 'png' });
+        }
+      }
+    }
+
+    // Check for matplotlib figures
+    try {
+      const figData = await pyodide.runPythonAsync(`
+try:
+    import matplotlib.pyplot as plt
+    import base64, io as _io
+    figs = [plt.figure(i) for i in plt.get_fignums()]
+    results = []
+    for fig in figs:
+        buf = _io.BytesIO()
+        fig.savefig(buf, format='png', bbox_inches='tight', dpi=100)
+        buf.seek(0)
+        results.append(base64.b64encode(buf.read()).decode())
+    plt.close('all')
+    results
+except Exception:
+    []
+`);
+      if (figData && figData.length) {
+        for (const img of figData) {
+          cell.outputs.push({ type: 'image', data: img, format: 'png' });
+        }
+      }
+    } catch (_) {}
+
+    // Display the return value if not None
+    if (result !== undefined && result !== null) {
+      const repr = String(result);
+      if (repr !== 'None') {
+        cell.outputs.push({ type: 'text', text: repr });
+      }
+    }
+
+    refreshCell(cell.id);
+
+  } catch (err) {
+    cell.outputs.push({ type: 'error', text: err.message });
+    refreshCell(cell.id);
+  } finally {
+    isRunning = false;
+    currentRunningCell = null;
+    statusEl.className = 'ready';
+    statusEl.querySelector('.label').textContent = 'Python (Pyodide)';
+  }
+}
+
+function runCellById(cellId) {
+  const cell = cells.find(c => c.id === cellId);
+  if (cell) runCell(cell);
+}
+
+function runSelected() {
+  const cell = cells.find(c => c.id === selectedCellId);
+  if (cell) {
+    runCell(cell);
+    const idx = cells.indexOf(cell);
+    if (idx === cells.length - 1) {
+      insertCell('code');
+    } else {
+      selectCell(cells[idx + 1].id);
+      focusCell(cells[idx + 1].id);
+    }
+  }
+}
+
+async function runAll() {
+  for (const cell of cells) {
+    await runCell(cell);
+  }
+}
+
+function interruptKernel() {
+  // Pyodide doesn't support true interrupts without SharedArrayBuffer,
+  // but we can at least reset the running state
+  if (isRunning) {
+    isRunning = false;
+    currentRunningCell = null;
+    const statusEl = document.getElementById('kernel-status');
+    statusEl.className = 'ready';
+    statusEl.querySelector('.label').textContent = 'Python (Pyodide)';
+  }
+}
+
+async function restartKernel() {
+  const statusEl = document.getElementById('kernel-status');
+  statusEl.className = 'loading';
+  statusEl.querySelector('.label').textContent = 'Restarting...';
+  isRunning = false;
+  currentRunningCell = null;
+  executionCount = 0;
+  cells.forEach(c => { c.executionCount = null; });
+  refreshCells();
+
+  try {
+    pyodideReady = false;
+    if (typeof __PYODIDE_WASM_BASE64__ !== 'undefined') {
+      await initPyodideInlined();
+    } else {
+      pyodide = await loadPyodide({
+        indexURL: pyodide._api?.config?.indexURL || `https://cdn.jsdelivr.net/pyodide/v0.27.5/full`,
+        stdout: (text) => appendOutput(currentRunningCell, 'text', text),
+        stderr: (text) => appendOutput(currentRunningCell, 'stderr', text),
+      });
+    }
+    await setupPythonEnv();
+    pyodideReady = true;
+    statusEl.className = 'ready';
+    statusEl.querySelector('.label').textContent = 'Python (Pyodide)';
+  } catch (err) {
+    statusEl.className = 'error';
+    statusEl.querySelector('.label').textContent = 'Restart failed';
+  }
+}
+
+// --- Save / Load (.ipynb format) ---
+function toNotebookJSON() {
+  return {
+    metadata: {
+      kernelspec: {
+        display_name: "Python (Pyodide)",
+        language: "python",
+        name: "python"
+      },
+      language_info: {
+        name: "python",
+        version: "3.11",
+        mimetype: "text/x-python",
+        file_extension: ".py"
+      },
+      jupyterlite: { standalone: true }
+    },
+    nbformat: 4,
+    nbformat_minor: 5,
+    cells: cells.map(cell => {
+      const nbCell = {
+        cell_type: cell.type,
+        source: cell.source.split('\n').map((line, i, arr) =>
+          i < arr.length - 1 ? line + '\n' : line
+        ),
+        metadata: {},
+      };
+      if (cell.type === 'code') {
+        nbCell.execution_count = cell.executionCount;
+        nbCell.outputs = cell.outputs.map(o => {
+          if (o.type === 'text') {
+            return { output_type: 'stream', name: 'stdout', text: (o.text + '\n').split('\n').map((l,i,a) => i < a.length-1 ? l+'\n' : l).filter(l => l) };
+          } else if (o.type === 'stderr') {
+            return { output_type: 'stream', name: 'stderr', text: (o.text + '\n').split('\n').map((l,i,a) => i < a.length-1 ? l+'\n' : l).filter(l => l) };
+          } else if (o.type === 'error') {
+            return { output_type: 'error', ename: 'Error', evalue: o.text, traceback: [o.traceback || o.text] };
+          } else if (o.type === 'html') {
+            return { output_type: 'display_data', data: { 'text/html': [o.html] }, metadata: {} };
+          } else if (o.type === 'image') {
+            return { output_type: 'display_data', data: { ['image/' + (o.format||'png')]: o.data }, metadata: {} };
+          }
+          return null;
+        }).filter(Boolean);
+      }
+      return nbCell;
+    })
+  };
+}
+
+function saveNotebook() {
+  const nb = toNotebookJSON();
+  const blob = new Blob([JSON.stringify(nb, null, 1)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = document.getElementById('filename').value || 'notebook.ipynb';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function loadNotebook() {
+  document.getElementById('file-input').click();
+}
+
+function handleFileOpen(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const nb = JSON.parse(e.target.result);
+      loadFromNotebookJSON(nb);
+      document.getElementById('filename').value = file.name;
+    } catch (err) {
+      alert('Failed to parse notebook: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+function loadFromNotebookJSON(nb) {
+  cells = [];
+  cellIdCounter = 0;
+  (nb.cells || []).forEach(nbCell => {
+    const source = Array.isArray(nbCell.source) ? nbCell.source.join('') : (nbCell.source || '');
+    const cell = createCell(nbCell.cell_type || 'code', source);
+    cell.executionCount = nbCell.execution_count || null;
+
+    if (nbCell.outputs) {
+      nbCell.outputs.forEach(o => {
+        if (o.output_type === 'stream') {
+          const text = Array.isArray(o.text) ? o.text.join('') : (o.text || '');
+          cell.outputs.push({ type: o.name === 'stderr' ? 'stderr' : 'text', text: text.replace(/\n$/, '') });
+        } else if (o.output_type === 'error') {
+          cell.outputs.push({ type: 'error', text: o.evalue || '', traceback: (o.traceback || []).join('\n') });
+        } else if (o.output_type === 'display_data' || o.output_type === 'execute_result') {
+          if (o.data) {
+            if (o.data['image/png']) {
+              cell.outputs.push({ type: 'image', data: o.data['image/png'], format: 'png' });
+            } else if (o.data['text/html']) {
+              const html = Array.isArray(o.data['text/html']) ? o.data['text/html'].join('') : o.data['text/html'];
+              cell.outputs.push({ type: 'html', html });
+            } else if (o.data['text/plain']) {
+              const text = Array.isArray(o.data['text/plain']) ? o.data['text/plain'].join('') : o.data['text/plain'];
+              cell.outputs.push({ type: 'text', text });
+            }
+          }
+        }
+      });
+    }
+
+    if (nbCell.cell_type === 'markdown') cell.rendered = true;
+    cells.push(cell);
+  });
+
+  if (cells.length === 0) cells.push(createCell('code'));
+  selectedCellId = cells[0].id;
+  refreshCells();
+}
+
+// --- Initialize ---
+function init() {
+  // Start with a default notebook
+  cells = [
+    createCell('markdown', '# Welcome to JupyterLite Standalone\n\nThis is a fully self-contained Jupyter notebook running **Python in your browser** via Pyodide (WebAssembly).\n\n- Press **Shift+Enter** to run a cell and advance\n- Press **Ctrl+Enter** to run a cell in place\n- Double-click rendered Markdown to edit it'),
+    createCell('code', 'import sys\nprint(f"Python {sys.version}")\nprint("Hello from Pyodide!")'),
+    createCell('code', '# Math works out of the box\nimport math\n\nresult = math.factorial(20)\nprint(f"20! = {result}")\n\n# List comprehension\nsquares = [x**2 for x in range(10)]\nprint(f"Squares: {squares}")'),
+    createCell('code', '# Try installing packages with micropip\nimport micropip\nawait micropip.install("numpy")\n\nimport numpy as np\narr = np.random.randn(3, 4)\nprint("Random array:")\nprint(arr)\nprint(f"\\nMean: {arr.mean():.4f}, Std: {arr.std():.4f}")'),
+  ];
+  selectedCellId = cells[0].id;
+  refreshCells();
+  initPyodide();
+}
+
+init();
+</script>
+</body>
+</html>
