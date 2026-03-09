@@ -154,6 +154,7 @@ docs/jupyter_execute
 *.whl
 _output
 _site
+_standalone_test
 
 ui-tests/playwright-report
 ui-tests/test-results
